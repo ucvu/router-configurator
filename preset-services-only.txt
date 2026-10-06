@@ -68,7 +68,7 @@ domain:37.48.0.0/16
 domain:45.134.0.0/16
 domain:66.22.0.0/16
 
-#ajax
+# ajax
 domain:hts-hubs.prod.ajax.systems
 domain:hts-hub.prod.ajax.systems
 domain:hubs-logs.prod.ajax.systems
@@ -82,3 +82,8 @@ domain:178.62.38.104/32
 domain:167.99.19.236/32
 domain:157.230.78.73/32
 domain:35.180.2.46/32
+
+# remotion
+domain:remotion.dev
+domain:www.remotion.dev
+domain:remotion.media
