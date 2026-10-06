@@ -7,12 +7,12 @@ import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from .config import Config
 from .jobs import JobWorker
-from .lists import normalize_hostname, parse_routing_list
+from .lists import RoutingList, normalize_hostname, parse_routing_list
 from .router import RouterClient
 from .storage import Store
 
@@ -40,6 +40,10 @@ class AcceptedJob(BaseModel):
 class JobEvent(BaseModel):
     created_at: str
     message: str
+
+
+class ListVersion(BaseModel):
+    version: str | None
 
 
 class JobResult(BaseModel):
@@ -98,16 +102,25 @@ def create_app(config: Config, *, client_factory=RouterClient, start_worker: boo
                 f"duration_ms={(time.monotonic() - started) * 1000:.0f}"
             ))
 
-    @app.post("/api/v1/router-configurations", status_code=202, response_model=AcceptedJob, dependencies=[Depends(authorize)])
-    def update_router(request: UpdateRequest) -> AcceptedJob:
+    def read_configured_list() -> RoutingList:
         try:
-            routing = parse_routing_list(config.list_path.read_text(encoding="utf-8"))
+            return parse_routing_list(config.list_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raise HTTPException(status_code=503, detail="Настроенный лист недоступен или некорректен.") from None
+
+    @app.get("/api/v1/list/version", response_model=ListVersion, dependencies=[Depends(authorize)])
+    def get_list_version(response: Response) -> ListVersion:
+        routing = read_configured_list()
+        response.headers["Cache-Control"] = "no-store"
+        return ListVersion(version=routing.version)
+
+    @app.post("/api/v1/router-configurations", status_code=202, response_model=AcceptedJob, dependencies=[Depends(authorize)])
+    def update_router(request: UpdateRequest) -> AcceptedJob:
+        routing = read_configured_list()
         job_id = store.enqueue(request.hostname, routing)
         logger.info("%s", config.redact(
             f"job_id={job_id} hostname={request.hostname} action={request.action} "
-            f"status=queued | Задача принята; mode={routing.mode}, entries={len(routing.entries)}."
+            f"status=queued | Задача принята; version={routing.version}, mode={routing.mode}, entries={len(routing.entries)}."
         ))
         worker.notify()
         return AcceptedJob(job_id=job_id, status_url=f"/api/v1/jobs/{job_id}")

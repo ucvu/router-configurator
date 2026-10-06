@@ -49,6 +49,8 @@ def test_generation(tmp_path, monkeypatch, offline, mode):
     routing = generator.generate(preset, output, cache, offline)
     assert routing.entries == ("example.com", "second.example", "203.0.113.0/24", "198.51.100.2")
     assert output.read_text(encoding="utf-8") == routing.serialize()
+    assert routing.version is not None
+    assert output.read_text(encoding="utf-8").splitlines()[0] == f"version: {routing.version}"
     assert len(downloads) == (0 if offline else 2)
 
 

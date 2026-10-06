@@ -99,10 +99,12 @@ class RciSession:
 
 
 @pytest.mark.parametrize("mode", ["proxy", "direct"])
-def test_update_applies_real_command_shapes(mode):
+@pytest.mark.parametrize("version", [None, "2026-10-06T10:30:15.123456Z"])
+def test_update_applies_real_command_shapes(mode, version):
     session = RciSession(lose_route=True, disconnect=True)
     events = []
-    routing = parse_routing_list(f"mode: {mode}\nexample.com\n203.0.113.0/24\n")
+    header = f"version: {version}\n" if version else ""
+    routing = parse_routing_list(header + f"mode: {mode}\nexample.com\n203.0.113.0/24\n")
     client = RouterClient("router.example", "admin", "password", emit=events.append,
                           session=session, sleep=lambda seconds: None)
     client.update(routing)

@@ -3,12 +3,14 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
 
 Mode = Literal["proxy", "direct"]
 MAX_LIST_ENTRIES = 299
 _LABEL = re.compile(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\Z")
+_VERSION = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z")
 
 
 def normalize_domain(value: str) -> str:
@@ -94,9 +96,11 @@ def router_key(hostname: str) -> str:
 class RoutingList:
     mode: Mode
     entries: tuple[str, ...]
+    version: str | None = None
 
     def serialize(self) -> str:
-        return f"mode: {self.mode}\n" + "\n".join(self.entries) + "\n"
+        header = f"version: {self.version}\n" if self.version is not None else ""
+        return header + f"mode: {self.mode}\n" + "\n".join(self.entries) + "\n"
 
     def groups(self) -> dict[str, tuple[str, ...]]:
         domains: list[str] = []
@@ -121,7 +125,7 @@ def meaningful_lines(content: str) -> list[str]:
 def parse_mode(line: str) -> Mode:
     key, separator, value = line.partition(":")
     if key.strip().lower() != "mode" or not separator or value.strip().lower() not in {"proxy", "direct"}:
-        raise ValueError("Первая содержательная строка должна быть mode: proxy или mode: direct.")
+        raise ValueError("Ожидается строка mode: proxy или mode: direct.")
     return value.strip().lower()
 
 
@@ -129,8 +133,21 @@ def parse_routing_list(content: str) -> RoutingList:
     lines = meaningful_lines(content)
     if not lines:
         raise ValueError("Лист пуст.")
+    version = None
+    key, separator, value = lines[0].partition(":")
+    if key.strip().lower() == "version":
+        version = value.strip()
+        if not separator or not _VERSION.fullmatch(version):
+            raise ValueError("Версия должна содержать дату и время ISO 8601 с часовым поясом.")
+        try:
+            datetime.fromisoformat(version.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("Некорректная дата или время версии листа.") from None
+        lines = lines[1:]
+        if not lines:
+            raise ValueError("В листе отсутствует режим.")
     mode = parse_mode(lines[0])
     entries = tuple(dict.fromkeys(normalize_entry(line) for line in lines[1:]))
     if not entries:
         raise ValueError("В листе нет ни одной записи.")
-    return RoutingList(mode, entries)
+    return RoutingList(mode, entries, version)

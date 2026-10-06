@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .lists import RoutingList, meaningful_lines, normalize_entry, parse_mode, parse_routing_list
@@ -187,7 +188,8 @@ def generate(preset: Path, output: Path, cache_dir: Path, offline: bool = False)
             except ValueError:
                 pass
             entries.append(entry)
-    routing = parse_routing_list(RoutingList(mode, tuple(entries)).serialize())
+    version = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    routing = parse_routing_list(RoutingList(mode, tuple(entries), version).serialize())
     atomic_write(output, routing.serialize().encode("utf-8"))
     return routing
 
@@ -204,5 +206,5 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print(f"Ошибка генерации: {exc}", file=sys.stderr)
         return 1
-    print(f"Создан {args.output}: режим {routing.mode}, записей {len(routing.entries)}.")
+    print(f"Создан {args.output}: версия {routing.version}, режим {routing.mode}, записей {len(routing.entries)}.")
     return 0
