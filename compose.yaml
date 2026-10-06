@@ -1,0 +1,71 @@
+name: router-configurator
+
+services:
+  router-configurator:
+    build: .
+    image: router-configurator:local
+    restart: unless-stopped
+    init: true
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8765"
+      LIST_PATH: /app/lists/router.txt
+      DATA_DIR: /data
+    ports:
+      - "${DOCKER_BIND_HOST:-127.0.0.1}:${PORT:-8765}:8765"
+    volumes:
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        read_only: true
+        bind:
+          create_host_path: false
+      # Mount the directory so atomic replacement by the generator becomes visible.
+      - type: bind
+        source: ./lists
+        target: /app/lists
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.data
+        target: /data
+        bind:
+          create_host_path: false
+    stop_grace_period: 900s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  generator:
+    profiles: [tools]
+    build: .
+    image: router-configurator:local
+    # One-shot CLI writes host-mounted folders; the HTTP service runs as UID 10001.
+    user: "0:0"
+    command:
+      - python
+      - generate_geo_domains.py
+      - --preset
+      - /config/preset.txt
+      - --output
+      - /output/router.txt
+      - --cache-dir
+      - /cache
+    volumes:
+      - type: bind
+        source: "${PRESET_PATH:-./preset.example.txt}"
+        target: /config/preset.txt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./lists
+        target: /output
+      - type: bind
+        source: ./.cache
+        target: /cache

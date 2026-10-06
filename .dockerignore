@@ -1,0 +1,15 @@
+# Allow only application sources into the build context; exclude credentials and data.
+**
+!Dockerfile
+!requirements.txt
+!router_configurator/
+!router_configurator/**
+!generate_geo_domains.py
+!preset.example.txt
+**/.env
+**/.env.*
+**/.data/
+**/.cache/
+**/*.sqlite3*
+**/__pycache__/
+**/*.py[cod]

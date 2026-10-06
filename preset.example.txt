@@ -1,0 +1,6 @@
+mode: proxy
+geosite:openai
+geosite:youtube
+geoip:telegram
+domain:example.com
+domain:203.0.113.10/32
