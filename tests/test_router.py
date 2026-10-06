@@ -101,8 +101,10 @@ class RciSession:
 @pytest.mark.parametrize("mode", ["proxy", "direct"])
 def test_update_applies_real_command_shapes(mode):
     session = RciSession(lose_route=True, disconnect=True)
+    events = []
     routing = parse_routing_list(f"mode: {mode}\nexample.com\n203.0.113.0/24\n")
-    client = RouterClient("router.example", "admin", "password", session=session, sleep=lambda seconds: None)
+    client = RouterClient("router.example", "admin", "password", emit=events.append,
+                          session=session, sleep=lambda seconds: None)
     client.update(routing)
     digest = hashlib.md5(b"admin:realm:password").hexdigest()
     assert session.login_body == {"login": "admin", "password": hashlib.sha256(("challenge" + digest).encode()).hexdigest()}
@@ -111,6 +113,13 @@ def test_update_applies_real_command_shapes(mode):
     assert {route["interface"] for route in session.routes} == {"Wireguard0" if mode == "proxy" else "GigabitEthernet0"}
     assert session.interface_data["Wireguard0"]["state"] == "up"
     assert session.interface_data["Wireguard1"]["state"] == "down"
+    assert "Подключение к RCI API роутера." in events
+    assert "Авторизация на роутере успешна." in events
+    assert any("Восстановление связи" in event for event in events)
+    assert "Связь с роутером восстановлена." in events
+    assert any("Создаю список" in event for event in events)
+    assert any("Создаю DNS-маршрут" in event for event in events)
+    assert "Создание списков и DNS-маршрутов подтверждено: lists=2." in events
     commands = session.commands
     vpn_down = next(i for i, command in enumerate(commands) if command.get("interface", {}).get("up") is False)
     deletion = next(i for i, command in enumerate(commands) if isinstance(command.get("dns-proxy", {}).get("route"), list))

@@ -8,6 +8,7 @@ import uvicorn
 
 from .app import create_app
 from .config import Config
+from .logging import configure_logging
 
 
 def main() -> int:
@@ -19,6 +20,8 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         print(f"Ошибка конфигурации: {exc}", file=sys.stderr)
         return 1
+    configure_logging(config)
+    # Requests are logged by the app without raw URLs, headers, or request bodies.
     uvicorn.run(create_app(config), host=config.host, port=config.port, workers=1, access_log=False)
     return 0
 

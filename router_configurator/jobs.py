@@ -80,6 +80,7 @@ class JobWorker:
             self._remaining_workers = len(self._threads)
             for thread in self._threads:
                 thread.start()
+            logger.info("Обработчики очереди запущены: parallel_jobs=%s.", self.config.max_parallel_jobs)
         except BaseException:
             self.stop()
             raise
@@ -127,9 +128,17 @@ class JobWorker:
     def _execute(self, job: dict) -> None:
         client = None
 
+        def log(status: str, message: str, level: int = logging.INFO) -> None:
+            logger.log(level, "%s", self.config.redact(
+                f"job_id={job['id']} hostname={job['hostname']} action={job['action']} "
+                f"status={status} | {message}"
+            ))
+
         def emit(message: str) -> None:
             self.store.event(job["id"], self.config.redact(message))
+            log("running", message)
 
+        log("running", "Выполнение задачи началось.")
         try:
             routing = parse_routing_list(job["snapshot"])
             client = self.client_factory(
@@ -137,15 +146,19 @@ class JobWorker:
             )
             client.update(routing)
         except RouterError as exc:
-            self.store.finish(job["id"], self.config.redact(str(exc)))
+            error = self.config.redact(str(exc))
+            self.store.finish(job["id"], error)
+            log("failed", error, logging.ERROR)
         except Exception:
             # No traceback/response dumps: unexpected exceptions may embed router credentials.
             self.store.finish(job["id"], "Внутренняя ошибка выполнения задачи.")
+            log("failed", "Внутренняя ошибка выполнения задачи.", logging.ERROR)
         else:
             self.store.finish(job["id"])
+            log("succeeded", "Списки и DNS-маршруты обновлены.")
         finally:
             if client is not None:
                 try:
                     client.close()
                 except Exception:
-                    logger.warning("Не удалось закрыть сессию роутера.")
+                    log("cleanup", "Не удалось закрыть сессию роутера.", logging.WARNING)

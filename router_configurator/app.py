@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from .config import Config
@@ -13,6 +15,8 @@ from .jobs import JobWorker
 from .lists import normalize_hostname, parse_routing_list
 from .router import RouterClient
 from .storage import Store
+
+logger = logging.getLogger(__name__)
 
 
 class UpdateRequest(BaseModel):
@@ -76,6 +80,24 @@ def create_app(config: Config, *, client_factory=RouterClient, start_worker: boo
     app.state.store = store
     app.state.worker = worker
 
+    @app.middleware("http")
+    async def log_request(request: Request, call_next):
+        started = time.monotonic()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            # Use the route template: supplied paths/query strings can contain secrets.
+            route = request.scope.get("route")
+            path = getattr(route, "path", "<unknown>")
+            client = request.client.host if request.client else "<unknown>"
+            logger.info("%s", config.redact(
+                f"HTTP {request.method} {path} client={client} status={status} "
+                f"duration_ms={(time.monotonic() - started) * 1000:.0f}"
+            ))
+
     @app.post("/api/v1/router-configurations", status_code=202, response_model=AcceptedJob, dependencies=[Depends(authorize)])
     def update_router(request: UpdateRequest) -> AcceptedJob:
         try:
@@ -83,6 +105,10 @@ def create_app(config: Config, *, client_factory=RouterClient, start_worker: boo
         except (OSError, ValueError):
             raise HTTPException(status_code=503, detail="Настроенный лист недоступен или некорректен.") from None
         job_id = store.enqueue(request.hostname, routing)
+        logger.info("%s", config.redact(
+            f"job_id={job_id} hostname={request.hostname} action={request.action} "
+            f"status=queued | Задача принята; mode={routing.mode}, entries={len(routing.entries)}."
+        ))
         worker.notify()
         return AcceptedJob(job_id=job_id, status_url=f"/api/v1/jobs/{job_id}")
 

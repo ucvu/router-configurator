@@ -59,8 +59,10 @@ class RouterClient:
             raise RouterError(f"RCI API вернул HTTP {response.status_code}.")
 
     def login(self) -> None:
+        self.emit("Подключение к RCI API роутера.")
         response = self._request("GET", "/auth")
         if response.status_code == 200:
+            self.emit("Авторизация на роутере успешна.")
             return
         if response.status_code != 401:
             self._check_response(response)
@@ -74,6 +76,7 @@ class RouterClient:
         response = self._request("POST", "/auth", json={"login": self._username, "password": password_hash})
         if not 200 <= response.status_code < 300:
             raise RouterError(f"Не удалось авторизоваться на роутере: HTTP {response.status_code}.")
+        self.emit("Авторизация на роутере успешна.")
 
     def rci(self, commands: list[dict]) -> list[dict]:
         response = self._request("POST", "/rci/", json=commands)
@@ -132,11 +135,13 @@ class RouterClient:
         return data
 
     def reconnect(self, timeout: int = RECONNECT_TIMEOUT) -> None:
+        self.emit(f"Восстановление связи с роутером; timeout={timeout}s.")
         deadline = time.monotonic() + timeout
         while True:
             try:
                 self.login()
                 self.interfaces()
+                self.emit("Связь с роутером восстановлена.")
                 return
             except RouterConnectionError:
                 if time.monotonic() >= deadline:
@@ -261,8 +266,10 @@ class RouterClient:
                 for name in pending:
                     group = names.get(name)
                     if group is None:
+                        self.emit(f"Создаю список {name}: entries={len(groups[name])}.")
                         group = self.create_list(name, groups[name])
                         self.sleep(ACTION_DELAY)
+                    self.emit(f"Создаю DNS-маршрут для {name}: interface={interface}.")
                     self.create_route(group, interface)
                     self.sleep(ACTION_DELAY)
             except RouterConnectionError:
@@ -286,12 +293,15 @@ class RouterClient:
         if routing.mode == "direct" and wan is None:
             raise RouterError("Для режима direct не найден WAN-интерфейс ISP.")
         route_interface = wan if routing.mode == "direct" else selected
+        self.emit(f"Интерфейсы проверены: WireGuard={selected}, route_interface={route_interface}.")
         for name in wireguards:
             self.disable_vpn_if_up(name)
         if wan is not None:
+            self.emit(f"Настройка приоритета WAN-интерфейса {wan}.")
             self.move_wan(wan, bottom=routing.mode == "direct")
         self.emit("Удаление всех существующих списков и DNS-маршрутов.")
         self.delete_all_lists_and_routes()
         self.ensure_lists_and_routes(groups, route_interface)
+        self.emit(f"Создание списков и DNS-маршрутов подтверждено: lists={len(groups)}.")
         self.enable_vpn(selected)
         self.emit("Списки и маршруты обновлены.")
