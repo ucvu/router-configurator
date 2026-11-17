@@ -60,7 +60,17 @@ class RouterClient:
 
     def login(self) -> None:
         self.emit("Подключение к RCI API роутера.")
-        response = self._request("GET", "/auth")
+        for attempt in range(3):
+            try:
+                response = self._request("GET", "/auth")
+                if response.status_code in {408, 429, 500, 502, 503, 504}:
+                    self._check_response(response)
+                break
+            except RouterConnectionError:
+                if attempt == 2:
+                    raise
+                self.emit("Роутер не ответил на запрос входа; повторяю подключение.")
+                self.sleep(1)
         if response.status_code == 200:
             self.emit("Авторизация на роутере успешна.")
             return

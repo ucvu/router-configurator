@@ -28,6 +28,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ./.cache
+        target: /app/.cache
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ./.data
         target: /data
         bind:

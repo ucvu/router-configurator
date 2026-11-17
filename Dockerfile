@@ -18,7 +18,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt \
     && chown 10001:10001 /data
 
 COPY router_configurator/ ./router_configurator/
-COPY generate_geo_domains.py preset.example.txt ./
+COPY generate_geo_domains.py preset.example.txt preset-services-only.txt ./
 
 USER 10001:10001
 EXPOSE 8765

@@ -6,6 +6,7 @@
 !router_configurator/**
 !generate_geo_domains.py
 !preset.example.txt
+!preset-services-only.txt
 **/.env
 **/.env.*
 **/.data/

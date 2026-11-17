@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+from datetime import datetime, timezone
+from pathlib import Path
 import logging
 import secrets
 import time
@@ -14,6 +17,7 @@ from .config import Config
 from .jobs import JobWorker
 from .lists import RoutingList, normalize_hostname, parse_routing_list
 from .router import RouterClient
+from .routing_groups import catalog, compile_preset, load_groups, normalize_groups
 from .storage import Store
 
 logger = logging.getLogger(__name__)
@@ -29,6 +33,16 @@ class UpdateRequest(BaseModel):
     def validate_hostname(cls, value: str) -> str:
         normalize_hostname(value)
         return value.strip().rstrip("/")
+
+
+class GroupUpdateRequest(UpdateRequest):
+    action: Literal["update"] = "update"
+    groups: list[str]
+
+    @field_validator("groups")
+    @classmethod
+    def validate_groups(cls, value: list[str]) -> list[str]:
+        return normalize_groups(value)
 
 
 class AcceptedJob(BaseModel):
@@ -62,6 +76,13 @@ class JobResult(BaseModel):
 def create_app(config: Config, *, client_factory=RouterClient, start_worker: bool = True) -> FastAPI:
     store = Store(config.data_dir / "jobs.sqlite3")
     worker = JobWorker(config, store, client_factory)
+    project_dir = Path(__file__).resolve().parent.parent
+
+    async def warm_routing_catalog():
+        try:
+            await asyncio.to_thread(load_groups, project_dir)
+        except (OSError, ValueError, KeyError):
+            logger.warning("Базы групп маршрутизации не загружены.")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -69,9 +90,12 @@ def create_app(config: Config, *, client_factory=RouterClient, start_worker: boo
             worker.start()
         else:
             store.initialize()
+        warmup = asyncio.create_task(warm_routing_catalog()) if start_worker else None
         try:
             yield
         finally:
+            if warmup is not None:
+                warmup.cancel()
             if start_worker:
                 await asyncio.to_thread(worker.stop)
 
@@ -132,4 +156,36 @@ def create_app(config: Config, *, client_factory=RouterClient, start_worker: boo
             raise HTTPException(status_code=404, detail="Задача не найдена.")
         return result
 
+    @app.get("/api/v1/routing-groups", dependencies=[Depends(authorize)])
+    def get_routing_groups(response: Response) -> dict:
+        response.headers["Cache-Control"] = "no-store"
+        return catalog()
+
+    @app.post("/api/v1/routing-jobs", status_code=202, dependencies=[Depends(authorize)])
+    def update_router_groups(request: GroupUpdateRequest) -> dict:
+        try:
+            preset = compile_preset(project_dir, request.groups)
+            entries = []
+            for line in preset.splitlines()[1:]:
+                entry = line.removeprefix("domain:")
+                try:
+                    if ipaddress.ip_network(entry, strict=False).version == 6:
+                        continue
+                except ValueError:
+                    pass
+                entries.append(entry)
+            version = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+            routing = parse_routing_list(RoutingList("proxy", tuple(entries), version).serialize())
+        except (OSError, ValueError, KeyError):
+            raise HTTPException(status_code=503, detail="Не удалось собрать список маршрутизации.") from None
+        job_id = store.enqueue(request.hostname, routing)
+        logger.info("%s", config.redact(
+            f"job_id={job_id} hostname={request.hostname} action=update "
+            f"status=queued | Групп: {len(request.groups)}, записей: {len(routing.entries)}."
+        ))
+        worker.notify()
+        return {"job_id": job_id, "status": "queued", "groups": request.groups, "version": version}
+
+    app.add_api_route("/api/v1/routing-jobs/{job_id}", get_job, methods=["GET"],
+                      response_model=JobResult, dependencies=[Depends(authorize)])
     return app
