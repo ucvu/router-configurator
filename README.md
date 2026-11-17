@@ -423,6 +423,7 @@ RCI исполняет реальные формы команд, моделир�
 ### Выбор групп из кабинета notWePN
 
 GET /api/v1/routing-groups возвращает каталог и группы по умолчанию.
+В разделе «Видео и музыка» можно отдельно выбрать YouTube, Netflix и TIDAL.
 POST /api/v1/routing-jobs принимает hostname и groups (массив ID), создаёт
 снимок из выбранных групп и возвращает job_id, status, groups и version.
 GET /api/v1/routing-jobs/{job_id} возвращает статус из общей очереди.

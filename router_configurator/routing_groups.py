@@ -19,9 +19,10 @@ SECTIONS = (
         ("discord", "Discord", ("DISCORD",), ()),
         ("discord-ip", "Discord — дополнительные IP-диапазоны", (), ()),
     )),
-    ("Видео", (
+    ("Видео и музыка", (
         ("youtube", "YouTube", ("YOUTUBE",), ()),
         ("netflix", "Netflix", ("NETFLIX",), ("NETFLIX",)),
+        ("tidal", "TIDAL", (), ()),
     )),
     ("Разработка", (
         ("openai", "ChatGPT и OpenAI API", ("OPENAI",), ()),
@@ -47,6 +48,21 @@ GROUP_IDS = tuple(group_id for _, groups in SECTIONS for group_id, *_ in groups)
 META_GROUPS = {"instagram", "facebook", "messenger", "threads", "whatsapp", "meta-ai", "oculus"}
 META_SHARED = {"meta.com", "atmeta.com"}
 EXTRA_DOMAINS = {
+    "tidal": {
+        "tidal.com",
+        "listen.tidal.com",
+        "api.tidal.com",
+        "openapi.tidal.com",
+        "auth.tidal.com",
+        "login.tidal.com",
+        "resources.tidal.com",
+        "images.tidal.com",
+        "amz-pr-cf.audio.tidal.com",
+        "sp-ad-cf.audio.tidal.com",
+        "sp-ad-fa.audio.tidal.com",
+        "sp-pr-cf.audio.tidal.com",
+        "sp-pr-fa.audio.tidal.com",
+    },
     "facebook": {"tfbnw.net"},
     "tiktok": {"p16-tiktok-dm-sticker-sign-sg.ibyteimg.com"},
     "github": {"githubsupport.com"},
